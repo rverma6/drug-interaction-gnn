@@ -1,14 +1,10 @@
-# gnn.py
-
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import GCNConv, global_mean_pool
-from torch_geometric.data import DataLoader, Batch
-from torch.utils.data import Dataset
-
+from torch_geometric.data import Batch
+from torch.utils.data import Dataset, DataLoader
 
 train_data1, train_data2, train_labels, test_data1, test_data2, test_labels = torch.load('processed_data.pt')
-
 
 class MoleculeInteractionDataset(Dataset):
     def __init__(self, data_list1, data_list2, labels):
@@ -22,13 +18,20 @@ class MoleculeInteractionDataset(Dataset):
     def __getitem__(self, idx):
         return self.data_list1[idx], self.data_list2[idx], self.labels[idx]
 
+def collate_fn(batch):
+    data1_list, data2_list, label_list = zip(*batch)
+
+    data1_batch = Batch.from_data_list(data1_list)
+    data2_batch = Batch.from_data_list(data2_list)
+    label_batch = torch.stack(label_list, dim=0).float().view(-1, 1)
+
+    return data1_batch, data2_batch, label_batch
 
 train_dataset = MoleculeInteractionDataset(train_data1, train_data2, train_labels)
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, collate_fn=collate_fn)
 
 test_dataset = MoleculeInteractionDataset(test_data1, test_data2, test_labels)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
+test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False, collate_fn=collate_fn)
 
 class GNNEncoder(torch.nn.Module):
     def __init__(self, hidden_channels):
@@ -64,26 +67,20 @@ class InteractionPredictor(torch.nn.Module):
         out = self.classifier(combined)
         return out
 
-
 model = InteractionPredictor(hidden_channels=64)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 criterion = torch.nn.BCEWithLogitsLoss()
 
-epochs = 10  
+epochs = 100
 
 # Training loop
 for epoch in range(epochs):
     model.train()
     total_loss = 0
-    for data1_list, data2_list, label_batch in train_loader:
+    for data1_batch, data2_batch, label_batch in train_loader:
         optimizer.zero_grad()
 
-        # Batch the data
-        data1_batch = Batch.from_data_list(data1_list)
-        data2_batch = Batch.from_data_list(data2_list)
-
         output = model(data1_batch, data2_batch)
-        label_batch = label_batch.view(-1, 1)
 
         loss = criterion(output, label_batch)
         loss.backward()
@@ -96,17 +93,15 @@ for epoch in range(epochs):
 # Save the trained model
 torch.save(model.state_dict(), 'gnn_model.pth')
 
-# Eval
+# Evaluation
 model.eval()
 correct = 0
 total = 0
 with torch.no_grad():
-    for data1_list, data2_list, label_batch in test_loader:
-        data1_batch = Batch.from_data_list(data1_list)
-        data2_batch = Batch.from_data_list(data2_list)
+    for data1_batch, data2_batch, label_batch in test_loader:
         output = model(data1_batch, data2_batch)
         preds = (torch.sigmoid(output) > 0.5).long()
-        correct += (preds.view(-1) == label_batch).sum().item()
+        correct += (preds.view(-1) == label_batch.view(-1).long()).sum().item()
         total += label_batch.size(0)
 accuracy = correct / total
 print(f'Test Accuracy: {accuracy:.4f}')

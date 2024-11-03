@@ -55,8 +55,9 @@ def mol_to_graph_data_obj(smiles):
     return data
 
 
-dataset_path = 'ChCh-Miner_durgbank-chem.tsv'  # Corrected filename
-interactions_df = pd.read_csv(dataset_path, sep='\t')
+dataset_path = 'Sample-Interactions.csv'  # Use your sample dataset
+interactions_df = pd.read_csv(dataset_path)
+
 
 
 required_columns = ['Drug1_SMILES', 'Drug2_SMILES', 'Label']
@@ -89,7 +90,7 @@ labels = torch.tensor(labels, dtype=torch.float)  # Use dtype=torch.long for mul
 
 
 train_indices, test_indices = train_test_split(
-    range(len(labels)), test_size=0.2, stratify=labels, random_state=42
+    range(len(labels)), test_size=0.2, random_state=42
 )
 
 train_data1 = [data_list1[i] for i in train_indices]
